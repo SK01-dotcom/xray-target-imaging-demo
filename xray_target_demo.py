@@ -18,7 +18,7 @@ rng = np.random.default_rng(seed=1)   # fixed seed: results are reproducible
 N = 512          # image size in pixels
 PX = 0.5         # pixel size in micrometres
 R_OUT = 80.0     # true outer radius of the shell (um)
-R_IN = 76.0      # true inner radius of the shell (um)
+R_IN = 70.0      # true inner radius of the shell (um)
 MU = 0.02        # linear attenuation coefficient (1/um)
 
 # %% 1. Simulate the target
@@ -37,7 +37,7 @@ thickness_true = chord(R_OUT) - chord(R_IN)
 
 # %% 2. Add detector effects (what real data looks like)
 # Uneven beam profile (flat field), dark offset and photon (Poisson) noise
-flat = 300 * (1 + 0.2 * np.exp(-(x**2 + y**2) / (2 * 150**2)))
+flat = 1000 * (1 + 0.2 * np.exp(-(x**2 + y**2) / (2 * 150**2)))
 dark = 50.0
 
 raw = rng.poisson(flat * np.exp(-MU * thickness_true)) + dark   # sample image
@@ -48,6 +48,9 @@ dark_meas = rng.poisson(np.full_like(flat, 5)) + dark - 5       # detector with 
 # Removes the uneven beam and the detector offset
 denominator = flat_meas - dark_meas
 transmission = np.where(denominator > 0, (raw - dark_meas) / np.maximum(denominator, 1), np.nan)
+print("invalid pixels: %.1f%%" % (100 * np.isnan(transmission).mean()))
+# Fill invalid pixels with the mean so the Gaussian filter does not spread NaN
+transmission = np.where(np.isnan(transmission), np.nanmean(transmission), transmission)
 
 # %% 4. Noise reduction and thickness recovery (Beer-Lambert law)
 transmission_smooth = ndimage.gaussian_filter(transmission, sigma=1.5)
@@ -63,7 +66,7 @@ edges = gradient > np.percentile(gradient, 98)
 # %% 6. Measure the shell from the azimuthally averaged radial profile
 r_bins = np.arange(0, R_OUT * 1.5, PX)
 idx = np.digitize(r.ravel(), r_bins)
-profile = np.array([thickness_meas.ravel()[idx == i].np.nanmean(...) for i in range(1, len(r_bins))])
+profile = np.array([np.nanmean(thickness_meas.ravel()[idx == i]) for i in range(1, len(r_bins))])
 r_centres = r_bins[:-1] + PX / 2
 
 # Inner radius: thickness is largest where the X-ray grazes the inner surface
